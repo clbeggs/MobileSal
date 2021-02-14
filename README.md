@@ -12,3 +12,6 @@ Check out the following [list of datasets](https://github.com/taozh2017/RGBD-SOD
 python main.py
 ```
 
+## Known Issues
+
+Currently has training issues, Dice and BCE loss giving good scores to very bad outputs.
