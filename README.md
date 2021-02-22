@@ -56,3 +56,12 @@ python main.py
 ## Known Issues
 
 Currently has training issues, Dice and BCE loss giving good scores to very bad outputs.
+
+#### Things the issues are not:
+
+* Vanishing Gradient, 
+    * Checking the gradient, the smallest mean stays in the thousands
+* Large model weight values
+    * Max model weights are 1
+
+

@@ -12,8 +12,9 @@ from torchvision import transforms
 from blocks import *
 
 
-torch.manual_seed(28)
-np.random.seed(28)
+seed = 1234823
+torch.manual_seed(seed)
+np.random.seed(seed)
 
 
 class DepthBlock(nn.Module):
@@ -152,7 +153,6 @@ class MobileSal(nn.Module):
 
         (d1, d2, d3, d4, d5) = self.depth_stream(depth_map)
 
-        # CMF - Eq (3) of mobile sal paper
         c5D = self.CMF(c5, d5)
         restored_depth = self.idr(c1, c2, c3, c4, c5D)
 
@@ -203,38 +203,47 @@ class MobileSalTranspose(nn.Module):
         self.depth_stream = DepthStream()
 
         self.idr = ImplicitDepthRestore(16, 32, 64, 96, 320)
-        self.cpr1 = CompactPyramidRefine(in_channels=16)
-        self.cpr2 = CompactPyramidRefine(in_channels=32)
-        self.cpr3 = CompactPyramidRefine(in_channels=64)
-        self.cpr4 = CompactPyramidRefine(in_channels=96)
-        self.cpr5 = CompactPyramidRefine(in_channels=320)
+        # The strange in_channels are from the fact that we concatenate after each CPR block
+        self.cpr5 = CompactPyramidRefine(in_channels=32, out_channels=8)
+        self.cpr4 = CompactPyramidRefine(in_channels=64, out_channels=16)
+        self.cpr3 = CompactPyramidRefine(in_channels=128, out_channels=32)
+        self.cpr2 = CompactPyramidRefine(in_channels=192, out_channels=64)
+        self.cpr1 = CompactPyramidRefine(in_channels=320, out_channels=96)
 
-        self.decode1 = Decoder(320)
-        self.decode2 = Decoder(96)
-        self.decode3 = Decoder(64)
-        self.decode4 = Decoder(32)
+        self.decode1 = Decoder(96)
+        self.decode2 = Decoder(64)
+        self.decode3 = Decoder(32)
+        self.decode4 = Decoder(16)
         self.decode5 = Decoder(16)
 
         # yapf: disable
-        self.convT1 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=2, stride=2)
-        self.convT2 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=2, stride=2)
-        self.convT3 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=2, stride=2)
-        self.convT4 = nn.ConvTranspose2d(in_channels=1, out_channels=1, kernel_size=2, stride=2)
+        self.convT1 = nn.ConvTranspose2d(in_channels=96, out_channels=96, kernel_size=2, stride=2)
+        self.convT2 = nn.ConvTranspose2d(in_channels=64, out_channels=64, kernel_size=2, stride=2)
+        self.convT3 = nn.ConvTranspose2d(in_channels=32, out_channels=32, kernel_size=2, stride=2)
+        self.convT4 = nn.ConvTranspose2d(in_channels=16, out_channels=16, kernel_size=2, stride=2)
         # yapf: enable
 
     def forward(self, rgb_image, depth_map):
         (c1, c2, c3, c4, c5) = self.rgb_stream(rgb_image)
 
-        (d1, d2, d3, d4, d5) = self.depth_stream(depth_map)
+        (_, _, _, _, d5) = self.depth_stream(depth_map)
 
         # CMF - Eq (3) of mobile sal paper
         c5D = self.CMF(c5, d5)
         restored_depth = self.idr(c1, c2, c3, c4, c5D)
 
-        pass1, pred1 = self.decode1(self.cpr1(c5D))
-        pass2, pred2 = self.decode2(self.cpr2(self.convT1(pass1) + c4))
-        pass3, pred3 = self.decode3(self.cpr3(self.convT2(pass2) + c3))
-        pass4, pred4 = self.decode4(self.cpr4(self.convT3(pass3) + c2))
-        _, pred5 = self.decode5(self.cpr5(self.convT4(pass4) + c1))
+        pass1 = self.cpr1(c5D)
+        pred1 = self.decode1(pass1)
+
+        pass2 = self.cpr2(torch.cat((self.convT1(pass1), c4), 1))
+        pred2 = self.decode2(pass2)
+
+        pass3 = self.cpr3(torch.cat((self.convT2(pass2), c3), 1))
+        pred3 = self.decode3(pass3)
+
+        pass4 = self.cpr4(torch.cat((self.convT3(pass3), c2), 1))
+        pred4 = self.decode4(pass4)
+
+        pred5 = self.decode5(pass4)
 
         return (pred1, pred2, pred3, pred4, pred5), restored_depth

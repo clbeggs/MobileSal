@@ -125,11 +125,9 @@ class NJU2K_Dataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         idx = self.key_vals[index]
         rgb = torch.Tensor(self.drgb_img[idx])
-        dep = torch.Tensor(
-            self.ddepth_map[idx].reshape(
-                1, self.ddepth_map[idx].shape[0], self.ddepth_map[idx].shape[1]
-            )
-        )
+        ddepth_np = self.ddepth_map[idx].reshape(1, self.ddepth_map[idx].shape[0], self.ddepth_map[idx].shape[1])
+        ddepth_np = np.invert(ddepth_np) + np.max(ddepth_np) + 2
+        dep = torch.Tensor(ddepth_np)
         gt = torch.Tensor(
             self.dgt[idx].reshape(1, self.dgt[idx].shape[0], self.dgt[idx].shape[1])
         )
